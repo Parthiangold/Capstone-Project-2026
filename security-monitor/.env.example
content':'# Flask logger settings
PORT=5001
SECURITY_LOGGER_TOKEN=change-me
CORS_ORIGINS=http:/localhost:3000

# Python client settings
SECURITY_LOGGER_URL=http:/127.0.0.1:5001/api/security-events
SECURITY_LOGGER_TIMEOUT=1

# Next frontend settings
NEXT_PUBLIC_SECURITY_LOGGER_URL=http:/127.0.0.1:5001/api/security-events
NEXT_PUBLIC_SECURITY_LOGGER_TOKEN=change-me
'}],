@@ -1,0 +1,192 @@
+"use client";
+
+import Box from "@mui/material/Box";
+import Container from "@mui/material/Container";
+import Typography from "@mui/material/Typography";
+import Paper from "@mui/material/Paper";
+import Chip from "@mui/material/Chip";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import Divider from "@mui/material/Divider";
+import { useEffect, useState } from "react";
+
+type SecurityEvent = {
+  timestamp: string;
+  feature: string;
+  event: string;
+  outcome: string;
+  severity: string;
+  ip_address?: string;
+};
+
+const loggerUrl =
+  process.env.NEXT_PUBLIC_SECURITY_LOGGER_URL ?? "http://127.0.0.1:5001/api/security-events";
+const loggerToken = process.env.NEXT_PUBLIC_SECURITY_LOGGER_TOKEN;
+
+export default function Home() {
+  const [events, setEvents] = useState<SecurityEvent[]>([]);
+
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        const response = await fetch(loggerUrl, {
+          headers: loggerToken ? { Authorization: `Bearer ${loggerToken}` } : undefined,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        const normalizedEvents = Array.isArray(data) ? data : [];
+
+        const sortedEvents = [...normalizedEvents].sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        );
+
+        setEvents(sortedEvents.slice(0, 100));
+      } catch (error) {
+        console.error("Failed to fetch security events:", error);
+      }
+    };
+
+    fetchEvents();
+    const interval = window.setInterval(fetchEvents, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [loggerToken]);
+
+  return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        backgroundColor: "#f5f7fa",
+        paddingTop: 4,
+        paddingBottom: 4,
+      }}
+    >
+      <Container maxWidth="xl">
+        <Paper
+          elevation={2}
+          sx={{
+            padding: 3,
+            marginBottom: 3,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+            }}
+          >
+            <img
+              src="/ai4care_logo_lightmode.svg"
+              alt="AI4CARE Icon"
+              width={80}
+              height={80}
+              style={{ marginBottom: "12px" }}
+            />
+            <Divider orientation="vertical" flexItem sx={{ marginLeft: 1 }} />
+            <Box>
+              <Typography
+                variant="h4"
+                sx={{
+                  fontWeight: "bold",
+                  marginLeft: 1,
+                }}
+              >
+                Security Monitor
+              </Typography>
+            </Box>
+          </Box>
+
+          <Chip label="LIVE" color="success" variant="outlined" />
+        </Paper>
+
+        <Paper
+          elevation={2}
+          sx={{
+            padding: 3,
+            minHeight: 575,
+          }}
+        >
+          <Typography
+            variant="h6"
+            sx={{
+              fontWeight: "bold",
+            }}
+          >
+            Security Event Log
+          </Typography>
+
+          <TableContainer
+            sx={{
+              marginTop: 2,
+              maxHeight: 500,
+              overflowY: "auto",
+            }}
+          >
+            <Table stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell>
+                    <strong>Timestamp</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Security Feature</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Event</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Outcome</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Severity</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>IP Address</strong>
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+
+              <TableBody>
+                {events.map((securityEvent, index) => (
+                  <TableRow key={`${securityEvent.timestamp}-${securityEvent.event}-${index}`}>
+                    <TableCell>{securityEvent.timestamp}</TableCell>
+                    <TableCell>{securityEvent.feature}</TableCell>
+                    <TableCell>{securityEvent.event}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={securityEvent.outcome}
+                        color={securityEvent.outcome === "SUCCESS" ? "success" : "error"}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={securityEvent.severity}
+                        color={securityEvent.severity === "HIGH" ? "error" : "info"}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>{securityEvent.ip_address || "N/A"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      </Container>
+    </Box>
+  );
+}
