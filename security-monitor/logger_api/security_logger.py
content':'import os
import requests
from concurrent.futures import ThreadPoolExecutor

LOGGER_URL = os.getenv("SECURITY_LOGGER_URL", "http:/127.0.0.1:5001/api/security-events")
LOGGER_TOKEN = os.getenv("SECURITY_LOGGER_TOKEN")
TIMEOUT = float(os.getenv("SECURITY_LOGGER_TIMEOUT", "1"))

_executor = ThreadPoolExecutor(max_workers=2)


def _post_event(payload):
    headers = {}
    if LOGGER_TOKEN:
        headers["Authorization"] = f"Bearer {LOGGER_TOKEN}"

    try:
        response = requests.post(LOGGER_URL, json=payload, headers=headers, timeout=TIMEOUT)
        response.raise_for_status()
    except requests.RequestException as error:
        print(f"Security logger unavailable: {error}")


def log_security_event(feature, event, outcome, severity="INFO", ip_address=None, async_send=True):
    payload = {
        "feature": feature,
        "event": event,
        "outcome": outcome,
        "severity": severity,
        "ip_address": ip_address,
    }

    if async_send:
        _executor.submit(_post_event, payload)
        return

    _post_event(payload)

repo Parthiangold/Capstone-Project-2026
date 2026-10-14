@@ -1,0 +1,70 @@
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from datetime import datetime
+import os
+
+app = Flask(__name__)
+
+# CORS can be restricted in production.
+cors_origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "*").split(",") if origin.strip()]
+if cors_origins and cors_origins != ["*"]:
+    CORS(app, origins=cors_origins)
+else:
+    CORS(app)
+
+AUTH_TOKEN = os.getenv("SECURITY_LOGGER_TOKEN")
+
+# in-memory storage for now; swap for a database in production if needed
+security_events = []
+
+
+@app.route("/health", methods=["GET"])
+def health_check():
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/security-events", methods=["GET"])
+def get_security_events():
+    return jsonify(security_events)
+
+
+@app.route("/api/security-events", methods=["POST"])
+def create_security_event():
+    if AUTH_TOKEN:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Unauthorized"}), 401
+        token = auth_header.split(" ", 1)[1]
+        if token != AUTH_TOKEN:
+            return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON object"}), 400
+
+    required_fields = ["feature", "event", "outcome"]
+    missing_fields = [field for field in required_fields if field not in data]
+    if missing_fields:
+        return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    remote_ip = request.remote_addr
+    ip_address = data.get("ip_address")
+    if not ip_address:
+        ip_address = forwarded_for.split(",")[0].strip() if forwarded_for else remote_ip
+
+    new_event = {
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "feature": data["feature"],
+        "event": data["event"],
+        "outcome": data["outcome"],
+        "severity": data.get("severity", "INFO"),
+        "ip_address": ip_address,
+    }
+
+    security_events.append(new_event)
+    return jsonify(new_event), 201
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5001")), debug=os.getenv("FLASK_DEBUG", "0") == "1")
